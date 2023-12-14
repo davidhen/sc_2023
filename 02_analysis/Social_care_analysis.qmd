@@ -1,0 +1,345 @@
+---
+title: "Social care data analysis"
+author: "Dr David Henderson"
+format: 
+  html:
+    fig-width: 12
+    fig-height: 9
+    code-fold: true
+editor: source
+---
+
+## Introduction
+
+Analysis of a bespoke extract of data requested from Public Health Scotland. Aim to compare rates of home care provision with unscheduled care use across local authorities in Scotland. 
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(readxl))
+suppressPackageStartupMessages(library(ggrepel))
+suppressPackageStartupMessages(library(janitor))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(ggthemes))
+suppressPackageStartupMessages(library(gghighlight))
+suppressPackageStartupMessages(library(patchwork))
+suppressPackageStartupMessages(library(here))
+here()
+
+#Baseline plot settings
+theme_set(theme_minimal(base_family = "Helvetica", base_size = 32) +
+            theme(panel.grid.minor = element_blank(),
+                  #axis.title.y = element_text(margin = margin(0, 20, 0, 0)),
+                  #axis.title.x = element_text(margin = margin(20, 0, 0, 0)),
+                  axis.line.x = element_line(colour = 'black', size=0.5,
+                                             linetype='solid'),
+                  axis.line.y = element_line(colour = 'black', size=0.5,
+                                             linetype='solid'),
+                  strip.text = element_text(face = "bold"),
+                  plot.caption = element_text(colour = "#AAAAAA"),
+                  plot.margin = margin(3,15,3,3,"mm")))
+
+#Short cut for csv output with html tables
+my_datatable <- function(x){
+  DT::datatable(x, extensions = "Buttons", options = list(dom = "Bfrtip", 
+                                                          buttons = c("csv")))
+}
+
+`%nin%` <- negate(`%in%`)
+```
+
+## Load Data
+
+```{r}
+data <- read_excel(here("01_data", "IR2023-00526 Output.xlsx"), 
+                   range = "A4:K9459") %>% 
+  clean_names() %>% 
+  rename(
+    location = sending_location,
+    value = number_of_attendances_admissions_bed_days,
+    rate = rate_per_1_000_population_of_attendances_admissions_bed_days,
+    n_hc_clients = number_of_care_at_home_clients,
+    rate_hc_clients = rate_of_care_at_home_clients_per_1_000_population,
+    hc_hours = number_of_care_at_home_hours,
+    rate_hc_hours = rate_of_care_at_home_hours_per_1_000_population) %>% 
+  mutate(hrs_per_client = hc_hours / n_hc_clients)
+```
+
+```{r, fig.width=16, fig.height=12, warning = FALSE, message=FALSE}
+data %>% 
+  filter(age_group %nin% c("0-17 years", "18-64 years", "All Ages",
+                           "65-74 years")) %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  #filter(location %in% c("Glasgow City", "City of Edinburgh", "Fife",
+  #       "North Lanarkshire", "South Lanarkshire", "Aberdeenshire",
+  #       "Highland", "Falkirk", "West Lothian", "Renfrewshire")) %>% 
+  filter(measure ==  "Emergency Admissions") %>%
+  #filter(financial_quarter == "2021/22 Q4") %>% 
+  ggplot(aes(hrs_per_client, value, label = location, colour = financial_quarter)) +
+  geom_point(size = 3) +
+  facet_wrap(~age_group) +
+  geom_text_repel() +
+  #geom_smooth(method = "glm", fill = "#99b3ff") +
+  #scale_x_continuous(limits = c(0, 350)) +
+  #scale_y_continuous(limits = c(0, 70)) +
+  theme(legend.position = "none") +
+  labs(colour = "")
+```
+
+```{r}
+data %>% 
+    filter(age_group %nin% c("0-17 years", "18-64 years", "All Ages",
+                           "65-74 years")) %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  #filter(location %in% c("Glasgow City", "City of Edinburgh", "Fife",
+  #       "North Lanarkshire", "South Lanarkshire", "Aberdeenshire",
+  #       "Highland", "Falkirk", "West Lothian", "Renfrewshire")) %>% 
+  filter(measure ==  "Emergency Admissions") 
+```
+
+
+```{r, fig.width=20, fig.height=16}
+data %>% 
+  filter(age_group == "All Ages") %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  #filter(location %in% c("Glasgow City", "City of Edinburgh", "Fife",
+  #       "North Lanarkshire", "South Lanarkshire", "Aberdeenshire",
+  #       "Highland", "Falkirk", "West Lothian", "Renfrewshire")) %>% 
+  filter(measure ==  "Emergency Admissions") -> adm_ts
+
+adm_ts %>%
+  ggplot(aes(financial_quarter, value, group = location, colour = location)) +
+  geom_point() +
+  geom_path() +
+  geom_label_repel(data = adm_ts %>% filter(financial_quarter == "2021/22 Q4"), 
+             aes(label = location), nudge_x = 2) +
+  scale_x_discrete(expand = expansion(add = c(0.2,3))) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1))
+  
+```
+
+
+
+
+```{r, fig.width=16, fig.height=12, warning = FALSE, message=FALSE}
+data %>% 
+  filter(age_group == "All Ages") %>%  
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  #filter(location %in% c("Glasgow City", "City of Edinburgh", "Fife",
+  #       "North Lanarkshire", "South Lanarkshire", "Aberdeenshire",
+  #       "Highland", "Falkirk", "West Lothian", "Renfrewshire")) %>% 
+  filter(measure ==  "Emergency Admissions") %>%
+  #filter(financial_quarter == "2021/22 Q4") %>% 
+  ggplot(aes(rate_hc_hours, rate, label = location, colour = location)) +
+  geom_point(size = 3) +
+  facet_wrap(~age_group) +
+  geom_text_repel() +
+  #geom_smooth(method = "glm", fill = "#99b3ff") +
+  #scale_x_continuous(limits = c(0, 350)) +
+  #scale_y_continuous(limits = c(0, 70)) +
+  theme(legend.position = "none") +
+  labs(colour = "")
+```
+
+
+
+
+```{r, fig.width=16, fig.height=12, warning = FALSE}
+data %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  filter(age_group %nin% c("0-17 years", "18-64 years", "All Ages", "65-74 years")) %>%
+  filter(measure == "Emergency Admissions") %>% 
+  filter(financial_quarter == "2021/22 Q4") %>% 
+  select(financial_quarter, location, rate, hrs_per_client, age_group) %>% 
+  #filter(hrs_per_client >50 & hrs_per_client < 250) %>% 
+  #pivot_longer(c(rate:rate_hc_clients), names_to = "measure", values_to = "value") %>% 
+  ggplot(aes(hrs_per_client, rate, label = location, group = age_group)) +
+  geom_point() +
+  geom_text_repel() +
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  geom_smooth(method = "lm", fill = "#99b3ff", alpha = 0.15) +
+  facet_wrap(~age_group) +
+  theme(axis.text.x = element_text(size = 16)) +
+  labs(caption = "2021/22 Quarter 4",
+       x = "Average home care hours per client",
+       y = "Emergency admission rate per 1000 population") -> av_hours
+```
+
+```{r, fig.width=16, fig.height=12, warning = FALSE}
+data %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  filter(age_group %nin% c("0-17 years", "18-64 years", "All Ages", "65-74 years")) %>%
+  filter(measure == "Emergency Admissions") %>% 
+  filter(financial_quarter == "2021/22 Q4") %>% 
+  select(financial_quarter, location, rate, rate_hc_hours, age_group) %>% 
+  #filter(hrs_per_client >50 & hrs_per_client < 250) %>% 
+  #pivot_longer(c(rate:rate_hc_clients), names_to = "measure", values_to = "value") %>% 
+  ggplot(aes(rate_hc_hours, rate, label = location, group = age_group)) +
+  geom_point() +
+  geom_text_repel() +
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  geom_smooth(method = "lm", fill = "#99b3ff", alpha = 0.15) +
+  facet_wrap(~age_group) +
+  theme(axis.text.x = element_text(size = 16)) +
+  labs(caption = "2021/22 Quarter 4",
+       x = "Rate of home care hours per 1000 population",
+       y = "Emergency admission rate per 1000 population")
+```
+
+
+```{r, fig.width=16, fig.height=12, warning = FALSE}
+data %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  filter(age_group %nin% c("0-17 years", "18-64 years", "All Ages", "65-74 years")) %>%
+  filter(measure == "Emergency Admissions") %>% 
+  filter(financial_quarter == "2021/22 Q4") %>% 
+  select(financial_quarter, location, rate, rate_hc_clients, age_group) %>% 
+  #filter(hrs_per_client >50 & hrs_per_client < 250) %>% 
+  #pivot_longer(c(rate:rate_hc_clients), names_to = "measure", values_to = "value") %>% 
+  ggplot(aes(rate_hc_clients, rate, label = location, group = age_group)) +
+  geom_point() +
+  geom_text_repel() +
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  geom_smooth(method = "lm", fill = "#99b3ff", alpha = 0.15) +
+  facet_wrap(~age_group) +
+  theme(axis.text.x = element_text(size = 16)) +
+  labs(caption = "2021/22 Quarter 4",
+       x = "Rate of home care clients per 1000 population",
+       y = "Emergency admission rate per 1000 population") -> clients
+```
+
+
+```{r, fig.width=20, fig.height=12, warning=FALSE}
+comb <- clients + av_hours 
+comb
+```
+
+```{r}
+ggsave(here("sc_combined.png"), width = 24, height = 12, bg = "white")
+```
+
+
+
+```{r, fig.width=16, fig.height=12, warning = FALSE}
+data %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  filter(age_group %nin% c("0-17 years", "18-64 years", "All Ages", "65-74 years")) %>%
+  filter(measure == "Emergency Admissions") %>% 
+  filter(financial_quarter == "2021/22 Q4") %>% 
+  select(financial_quarter, location, rate, rate_hc_clients, age_group, hrs_per_client) %>% 
+  #filter(hrs_per_client >50 & hrs_per_client < 250) %>% 
+  #pivot_longer(c(rate:rate_hc_clients), names_to = "measure", values_to = "value") %>% 
+  ggplot(aes(rate_hc_clients, hrs_per_client, label = location, group = age_group)) +
+  geom_point() +
+  geom_text_repel() +
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  geom_smooth(method = "lm", fill = "#99b3ff", alpha = 0.15) +
+  facet_wrap(~age_group, scales = "free_x") +
+  theme(axis.text.x = element_text(size = 16)) +
+  labs(caption = "2021/22 Quarter 4",
+       x = "Rate of home care clients per 1000 population",
+       y = "Average home care hours per client") 
+```
+
+
+# Models
+
+```{r}
+library(lme4)
+library(performance)
+```
+
+## Unconditional means model
+
+Social care clients
+
+```{r}
+data %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  filter(age_group == "All Ages") %>% 
+  distinct(financial_quarter, location, rate_hc_clients) -> lme_sc_client
+
+fit_1 <- lmer(rate_hc_clients ~ 1 + (1|location), REML = TRUE, data = lme_sc_client)
+
+summary(fit_1)
+```
+
+```{r}
+icc(fit_1)
+```
+92% of total variation in the rate of home care clients/1000 population is due to between location differences rather than differences within locations over time
+
+Social care hours
+
+```{r}
+data %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  filter(age_group == "All Ages") %>% 
+  distinct(financial_quarter, location, rate_hc_hours) -> lme_sc_hours
+
+fit_2 <- lmer(rate_hc_hours ~ 1 + (1|location), REML = TRUE, data = lme_sc_hours)
+
+summary(fit_2)
+```
+
+
+```{r}
+icc(fit_2)
+```
+
+
+Emergency admissions
+
+```{r}
+lme_data <- data %>% 
+  filter(measure == "Emergency Admissions") %>% 
+  filter(age_group == "All Ages") %>%
+  filter(location != "Scotland (All Areas Submitted)")
+
+fit_3 <- lmer(rate ~ 1 + (1|location), REML = TRUE, data = lme_data)
+
+summary(fit_3)
+```
+
+
+```{r}
+icc(fit_3)
+```
+
+81% of the total variation in the rate of emergency admissions/1000 population is attributable to differences among locations rather than changes over time within locations. We can also say the average correlation for any pair of rates from the same location is 0.810
+
+
+## Unconditional growth model
+
+```{r}
+fit_1b <- 
+  data %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  filter(age_group == "All Ages") %>% 
+  lmer(rate_hc_clients ~ financial_quarter + (financial_quarter|location),
+               REML = TRUE, data = .)
+
+summary(fit_1b)
+
+icc(fit_1b)
+```
+```{r fig.width=16, fig.height=12}
+data %>% 
+  filter(location != "Scotland (All Areas Submitted)") %>% 
+  filter(location %in% c("Glasgow City", "City of Edinburgh", "Highland",
+                         "Dundee City", "Renfrewshire", "Aberdeenshire")) %>% 
+  filter(age_group == "75-84 years") %>% 
+  filter(measure == "Emergency Admissions") %>% 
+  select(financial_quarter, location, rate, hrs_per_client) %>% 
+  mutate(ratio = hrs_per_client/rate) %>% 
+  ggplot(aes(financial_quarter, ratio, colour = location, group = location)) +
+  geom_point() +
+  geom_path() +
+  geom_label_repel(data = . %>% filter(financial_quarter == "2021/22 Q4"), 
+             aes(label = location), nudge_x = 2) +
+  scale_y_continuous(limits = c(0, 25)) +
+  theme(legend.position = "none")
+  
+```
+
